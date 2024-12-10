@@ -1,0 +1,155 @@
+noStroke()
+
+const TEMP_MIN=15
+const TEMP_MID=22
+const TEMP_MAX=32
+z:float = 255/(TEMP_MAX - TEMP_MID)
+const AMG8833_ADDR = 0x69
+const PIXEL_DATA_START_REG = 0x80
+const PIXEL_ARRAY_SIZE = 64
+# hier einstellen, 4 für 32 x 32, 8 für 64 x 64
+const INTP_FACTOR = 4
+
+temp:int
+celsius:float
+pixel:float[64]
+pixel_intp:float[4200]
+interpolate = true
+
+rows = 8
+cols = 8
+newRows= rows * INTP_FACTOR
+newCols= cols * INTP_FACTOR
+mod_rows = rows * INTP_FACTOR 
+mod_cols = cols * INTP_FACTOR 
+loop = newRows * newCols
+
+def int_to_binary(bin:int)
+    kette = ""
+    for bits in 16
+        set = bin & 0x8000
+        if set == 0x8000
+            kette = kette + "1"
+        else 
+            kette = kette + "0"
+        bin = bin << 1
+    print(kette)    
+
+
+x:int
+y:int
+row:int
+col:int
+
+r:byte
+g:byte
+b:byte
+
+def interpolate_color()
+    
+    if celsius < 15 celsius = 15
+    if celsius > 32 celsius = 32
+    
+    if celsius <= TEMP_MID:
+        b = 255 - ((celsius - TEMP_MIN) * z)
+        g = (celsius - TEMP_MIN) * z
+        r = 0 
+    else:
+        g = 255 - ((celsius - TEMP_MID) * z)
+        r = (celsius - TEMP_MID) * z
+        b = 0 
+
+
+# https://en.wikipedia.org/wiki/Bilinear_interpolation
+# mit ChatGPT erstellt und iteriert
+# https://chatgpt.com/share/6758a7d1-a618-8008-8553-fe9168b77315
+def interpolate_temp()
+    x0:float
+    y0:float
+    x1:int
+    y1:int
+    fx:float
+    fy:float
+    a:float
+    b1:float
+    c:float
+    d:float
+    i:float
+    j:float
+    wa:float
+    wb:float
+    wc:float
+    wd:float
+
+	for i in newRows
+        for j in newCols
+            x0 = i / newRows * (rows - 1)
+            y0 = j / newCols * (cols - 1)
+            
+            x1 = x0
+            y1 = y0
+            x2 = min(x1 + 1, rows - 1)
+            y2 = min(y1 + 1, cols - 1)
+            
+            // Calculate the fractional parts
+            fx = x0 - x1
+            fy = y0 - y1
+            
+            wa =  (1.0 - fx) * (1.0 - fy)
+            wb =  (1.0 - fx) * fy
+            wc = fx * (1.0 - fy)
+            wd= fx * fy
+            
+            // Interpolate between the four surrounding pixels
+            a = pixel[x1 + y1*8] * wa
+            b1 = pixel[x1 + y2*8] * wb
+            c = pixel[x2 + y1*8] * wc
+            d = pixel[x2 + y2*8] * wd
+            if j < newCols 
+                pixel_intp[i + j*newCols] = a + b1 + c + d
+     
+    return 
+
+
+while true:
+    readI2C(AMG8833_ADDR, PIXEL_DATA_START_REG ,  PIXEL_ARRAY_SIZE * 2)
+    clear()
+    for i in PIXEL_ARRAY_SIZE 
+        temp = getI2CInt()
+        
+        if (temp & 0x800) != 0
+            temp = temp - 2048 
+                        
+        pixel[i] = 0.25 * temp
+
+
+    if interpolate 
+        interpolate_temp()
+        pixel_size = 256/newRows     
+        for i in loop
+            row = i % mod_rows
+            col = i/mod_cols
+            # 30 bei 8 , 15 bei 16, 8 bei 32, 4 bei 64
+            x = pixel_size * row
+            y = pixel_size * col
+            celsius = pixel_intp[i]
+                  
+            interpolate_color()
+            fill(r, g , b)
+            drawRectangle(x, y, pixel_size, pixel_size)
+    
+    else
+        for i in PIXEL_ARRAY_SIZE 
+            row = i % 8
+            col = i/8
+            x = 30 * row
+            y = 30 * col
+            celsius = pixel[i]
+                  
+            interpolate_color()
+            fill(r, g , b)
+            drawRectangle(x, y, 30, 30)    
+    
+    
+    update()    
+
