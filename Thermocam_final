@@ -1,0 +1,221 @@
+INTP_FACTOR:int = 4
+TEMP_MIN=15 
+TEMP_MAX=32
+TEMP_MID=TEMP_MAX - TEMP_MIN
+z:float = 255/(TEMP_MAX - TEMP_MID)
+
+const AMG8833_ADDR = 0x69
+const PIXEL_DATA_START_REG = 0x80
+const PIXEL_ARRAY_SIZE = 64
+# hier einstellen, 4 für 32 x 32, 8 für 64 x 64
+
+
+temp:int
+celsius:float
+pixel:float[64]
+pixel_intp:float[4200]
+
+newRows:int
+newCols:int
+mod_rows:int
+mod_cols:int
+loop:int
+
+gui:int=1
+gui2:int=1
+
+rows = 8
+cols = 8
+
+x:int
+y:int
+row:int
+col:int
+
+r:byte
+g:byte
+b:byte
+
+def set_interpolation():
+    newRows= rows * INTP_FACTOR
+    newCols= cols * INTP_FACTOR
+    mod_rows = rows * INTP_FACTOR 
+    mod_cols = cols * INTP_FACTOR 
+    loop = newRows * newCols
+        
+def draw_gui()
+        clear()
+        drawText(80, 0, "Interpolation")
+        drawText(40, 0, "1")
+        drawText(40, 30, "2")
+        drawText(40, 60, "3")
+        drawText(40, 90, "4")
+        drawText(40, 120, "5")
+        drawText(40, 150, "6")
+        drawText(40, 180, "7")
+        drawText(40, 210, "8")
+        drawText(0, (gui-1) *30, "->")
+        update()
+
+def draw_gui2()
+        clear()
+        drawText(0, 0, "Temperaturen")
+        drawText(40, 30, "Min")
+        drawText(40, 60, "Max")
+        drawText(100, 30, TEMP_MIN)
+        drawText(100, 60, TEMP_MAX)
+        drawText(0, (gui2) *30, "->")
+        update()
+
+
+def interpolate_color()
+    
+    if celsius < TEMP_MIN celsius = TEMP_MIN
+    if celsius > TEMP_MAX celsius = TEMP_MAX
+    
+    if celsius <= TEMP_MID:
+        b = 255 - ((celsius - TEMP_MIN) * z)
+        g = (celsius - TEMP_MIN) * z
+        r = 0 
+    else:
+        g = 255 - ((celsius - TEMP_MID) * z)
+        r = (celsius - TEMP_MID) * z
+        b = 0 
+
+def interpolate_color2()
+    
+    if celsius < TEMP_MIN celsius = TEMP_MIN
+    if celsius > TEMP_MAX celsius = TEMP_MAX
+    
+    if celsius <= TEMP_MID:
+        g = 255 - ((celsius - TEMP_MIN) * z)
+        b = (celsius - TEMP_MIN) * z
+        r = 0 
+    else:
+        b = 255 - ((celsius - TEMP_MID) * z)
+        r = (celsius - TEMP_MID) * z
+        g = 0 
+
+
+
+# https://en.wikipedia.org/wiki/Bilinear_interpolation
+# mit ChatGPT erstellt und iteriert
+# https://chatgpt.com/share/6758a7d1-a618-8008-8553-fe9168b77315
+def interpolate_temp()
+    x0:float
+    y0:float
+    x1:int
+    y1:int
+    fx:float
+    fy:float
+    a:float
+    b1:float
+    c:float
+    d:float
+    i:float
+    j:float
+    wa:float
+    wb:float
+    wc:float
+    wd:float
+
+	for i in newRows
+        for j in newCols
+            x0 = i / newRows * (rows - 1)
+            y0 = j / newCols * (cols - 1)
+            
+            x1 = x0
+            y1 = y0
+            x2 = min(x1 + 1, rows - 1)
+            y2 = min(y1 + 1, cols - 1)
+            
+            fx = x0 - x1
+            fy = y0 - y1
+            
+            wa =  (1.0 - fx) * (1.0 - fy)
+            wb =  (1.0 - fx) * fy
+            wc = fx * (1.0 - fy)
+            wd= fx * fy
+            
+            // Interpolation zwischen den 4 umliegenden Punkten
+            a = pixel[x1 + y1*8] * wa
+            b1 = pixel[x1 + y2*8] * wb
+            c = pixel[x2 + y1*8] * wc
+            d = pixel[x2 + y2*8] * wd
+            if j < newCols 
+                pixel_intp[i + j*newCols] = a + b1 + c + d
+    return 
+
+noStroke()
+set_interpolation()
+while true:
+    readI2C(AMG8833_ADDR, PIXEL_DATA_START_REG ,  PIXEL_ARRAY_SIZE * 2)
+    clear()
+    for i in PIXEL_ARRAY_SIZE 
+        temp = getI2CInt()
+        if (temp & 0x800) != 0
+            temp = temp - 2048 
+                        
+        pixel[i] = 0.25 * temp
+
+    interpolate_temp()
+    pixel_size = 256/newRows     
+    for i in loop
+        row = i % mod_rows
+        col = i/mod_cols
+        # 30 bei 8 , 15 bei 16, 8 bei 32, 4 bei 64
+        x = pixel_size * row
+        y = pixel_size * col
+        celsius = pixel_intp[i]
+        interpolate_color()
+        fill(r, g , b)
+        drawRectangle(x, y, pixel_size, pixel_size)
+
+    update()    
+
+    k:buttons = getButtons()
+    if k.middle
+        while true
+            delay(100)
+            k = getButtons() 
+            if k.down && gui  < 8  
+                gui = gui  + 1
+            if k.up && gui  > 1
+                gui = gui  - 1
+            if k.right break
+            draw_gui()   
+               
+                
+         INTP_FACTOR =  gui
+         set_interpolation()
+    
+    if k.left
+        while true
+            delay(100)
+            k = getButtons() 
+            if k.down && gui2  < 2  
+                gui2 = gui2  + 1
+            if k.up && gui2  > 1
+                gui2 = gui2  - 1
+            
+            if k.right && gui2 ==1
+                TEMP_MIN = TEMP_MIN +1
+                
+            if k.left && gui2 ==1
+                TEMP_MIN = TEMP_MIN -1    
+
+            if k.right && gui2 ==2
+                TEMP_MAX = TEMP_MAX +1
+                
+            if k.left && gui2 ==2
+                TEMP_MAX = TEMP_MAX -1  
+
+            if k.middle
+                TEMP_MID=TEMP_MAX - TEMP_MIN
+                z = 255/(TEMP_MAX - TEMP_MID)
+                break
+            draw_gui2()   
+               
+                
+         
+
